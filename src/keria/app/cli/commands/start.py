@@ -54,14 +54,24 @@ parser.add_argument("--config-dir",
                     action="store",
                     default=None,
                     help="directory override for configuration data")
+parser.add_argument("--debug", 
+                    action="store_true", 
+                    required=False, 
+                    default=False,
+                    help="enable debug logging")
 
 
 def launch(args):
-    help.ogler.level = logging.CRITICAL
+    if args.debug:
+        help.ogler.level = logging.DEBUG
+        help.ogler.resetLevel(level=logging.DEBUG)
+    else:
+        help.ogler.level = logging.CRITICAL
     help.ogler.reopen(name=args.name, temp=True, clear=True)
 
     logger = help.ogler.getLogger()
 
+    logger.debug("DEBUG enabled")
     logger.info("******* Starting Agent for %s listening: admin/%s, http/%s "
                 ".******", args.name, args.admin, args.http)
 
