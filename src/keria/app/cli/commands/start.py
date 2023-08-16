@@ -73,7 +73,7 @@ def launch(args):
 
     logger.debug("DEBUG logging enabled")
     logger.info("******* Starting Agent for %s listening: admin/%s, http/%s "
-                ".******", args.name, args.admin, args.http)
+                "*******", args.name, args.admin, args.http)
 
     runAgent(name=args.name,
              base=args.base,
@@ -84,8 +84,8 @@ def launch(args):
              configFile=args.configFile,
              configDir=args.configDir)
 
-    logger.info("******* Ended Agent for %s listening: admin/%s, http/%s"
-                ".******", args.name, args.admin, args.http)
+    logger.info("******* Ended Agent for %s listening: admin/%s, http/%s "
+                "*******", args.name, args.admin, args.http)
 
 
 def runAgent(name="ahab", base="", bran="", admin=3901, http=3902, boot=3903, configFile=None,
