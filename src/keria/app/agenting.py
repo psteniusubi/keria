@@ -50,10 +50,8 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
     """ Set up an ahab in Signify mode """
 
     agency = Agency(name=name, base=base, bran=bran, configFile=configFile, configDir=configDir)
-    bootApp = falcon.App(middleware=falcon.CORSMiddleware(
-        allow_origins='*', allow_credentials='*',
-        expose_headers=['cesr-attachment', 'cesr-date', 'content-type', 'signature', 'signature-input',
-                        'signify-resource', 'signify-timestamp']))
+    bootApp = falcon.App()
+    bootApp.add_middleware(middleware=httping.HandleCORS())
     bootServer = http.Server(port=bootPort, app=bootApp)
     bootServerDoer = http.ServerDoer(server=bootServer)
     bootEnd = BootEnd(agency)
@@ -62,12 +60,8 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
     # Create Authenticater for verifying signatures on all requests
     authn = Authenticater(agency=agency)
 
-    app = falcon.App(middleware=falcon.CORSMiddleware(
-        allow_origins='*', allow_credentials='*',
-        expose_headers=['cesr-attachment', 'cesr-date', 'content-type', 'signature', 'signature-input',
-                        'signify-resource', 'signify-timestamp']))
-    if os.getenv("KERI_AGENT_CORS", "false").lower() in ("true", "1"):
-        app.add_middleware(middleware=httping.HandleCORS())
+    app = falcon.App()
+    app.add_middleware(middleware=httping.HandleCORS())
     app.add_middleware(authing.SignatureValidationComponent(agency=agency, authn=authn, allowed=["/agent"]))
     app.req_options.media_handlers.update(media.Handlers())
     app.resp_options.media_handlers.update(media.Handlers())
@@ -83,10 +77,8 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
     notifying.loadEnds(app=app)
 
     if httpPort:
-        happ = falcon.App(middleware=falcon.CORSMiddleware(
-            allow_origins='*', allow_credentials='*',
-            expose_headers=['cesr-attachment', 'cesr-date', 'content-type', 'signature', 'signature-input',
-                            'signify-resource', 'signify-timestamp']))
+        happ = falcon.App()
+        happ.add_middleware(middleware=httping.HandleCORS())
         happ.req_options.media_handlers.update(media.Handlers())
         happ.resp_options.media_handlers.update(media.Handlers())
 
