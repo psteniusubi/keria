@@ -10,12 +10,17 @@ from falcon.http_status import HTTPStatus
 
 class HandleCORS(object):
     def process_request(self, req, resp):
+        origin = req.get_header('Origin')
+        if origin is None:
+            return
         resp.set_header('Access-Control-Allow-Origin', '*')
         resp.set_header('Access-Control-Allow-Methods', '*')
         resp.set_header('Access-Control-Allow-Headers', '*')
-        resp.set_header('Access-Control-Max-Age', 1728000)  # 20 days
-        if req.method == 'OPTIONS':
-            raise HTTPStatus(falcon.HTTP_200, body='\n')
+        resp.set_header('Access-Control-Expose-Headers', '*')
+        resp.set_header('Access-Control-Allow-Private-Network', 'true')
+        resp.set_header('Access-Control-Max-Age', 5)  # 20 days
+        if req.method == 'OPTIONS' and req.get_header("Access-Control-Request-Method") is not None:
+            raise HTTPStatus(falcon.HTTP_204, body='')
 
 
 def getRequiredParam(body, name):
