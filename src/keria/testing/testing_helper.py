@@ -440,7 +440,7 @@ class Helpers:
                 'icp': serder.ked,
                 'sigs': sigers,
                 "salty": {
-                    'stem': 'signify:aid', 'pidx': 0, 'tier': 'low', 'sxlt': sxlt,
+                    'stem': 'signify:aid', 'pidx': 0, 'tier': 'low', 'sxlt': sxlt, 'transferable': True, 'kidx': 0,
                     'icodes': [MtrDex.Ed25519_Seed], 'ncodes': [MtrDex.Ed25519_Seed]}
                 }
 
@@ -562,7 +562,7 @@ class Helpers:
     @staticmethod
     def mockRandomNonce():
         return "A9XfpxIl1LcIkMhUSCCC8fgvkuX8gG9xK3SM-S8a8Y_U"
-
+    
 
 class Issuer:
     LE = "ENTAoj2oNBFpaniRswwPcca9W1ElEeH2V7ahw68HV4G5"
@@ -577,7 +577,7 @@ class Issuer:
     def createRegistry(self, pre, name):
         conf = dict(nonce='AGu8jwfkyvVXQ2nqEb5yVigEtR31KSytcpe2U2f7NArr')
 
-        registry = self.registrar.incept(name=name, pre=pre, conf=conf)
+        registry, _ = self.registrar.incept(name=name, pre=pre, conf=conf)
         assert registry.regk == "EACehJRd0wfteUAJgaTTJjMSaQqWvzeeHqAMMqxuqxU4"
 
         # Process escrows to clear event
@@ -601,8 +601,11 @@ class Issuer:
                                     status=registry.regk,
                                     source={}, rules={})
 
-        craw = signing.ratify(hab=issuer, serder=creder)
-        self.registrar.issue(regk=registry.regk, said=creder.said, dt=self.date)
+        pre, sn, said = self.registrar.issue(regk=registry.regk, said=creder.said, dt=self.date)
+        prefixer = coring.Prefixer(qb64=pre)
+        seqner = coring.Seqner(sn=sn)
+        saider = coring.Saider(qb64=said)
+        craw = signing.serialize(creder, prefixer, seqner, saider)
 
         # Process escrows to clear event
         self.rgy.processEscrows()
@@ -629,8 +632,12 @@ class Issuer:
                                     data=credSubject,
                                     status=registry.regk)
 
-        craw = signing.ratify(hab=issuer, serder=creder)
-        self.registrar.issue(regk=registry.regk, said=creder.said, dt=self.date)
+        pre, sn, said = self.registrar.issue(regk=registry.regk, said=creder.said, dt=self.date)
+
+        prefixer = coring.Prefixer(qb64=pre)
+        seqner = coring.Seqner(sn=sn)
+        saider = coring.Saider(qb64=said)
+        craw = signing.serialize(creder, prefixer, seqner, saider)
 
         # Process escrows to clear event
         self.rgy.processEscrows()

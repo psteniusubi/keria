@@ -151,6 +151,9 @@ class RegistryCollectionEnd:
         ked = httping.getRequiredParam(body, "vcp")
         vcp = coring.Serder(ked=ked)
 
+        ked = httping.getRequiredParam(body, "ixn")
+        ixn = coring.Serder(ked=ked)
+
         hab = agent.hby.habByName(name)
         if hab is None:
             raise falcon.HTTPNotFound(description="alias is not a valid reference to an identfier")
@@ -164,7 +167,9 @@ class RegistryCollectionEnd:
         anchor = dict(i=registry.regk, s="0", d=registry.regk)
         # Create registry long running OP that embeds the above received OP or Serder.
 
-        agent.registrar.incept(hab, registry)
+        seqner = coring.Seqner(sn=ixn.sn)
+        prefixer = coring.Prefixer(qb64=ixn.pre)
+        agent.registrar.incept(hab, registry, prefixer=prefixer, seqner=seqner, saider=ixn.saider)
         op = agent.monitor.submit(hab.kever.prefixer.qb64, longrunning.OpTypes.registry,
                                   metadata=dict(anchor=anchor, depends=op))
 
@@ -524,7 +529,7 @@ class CredentialResourceEnd:
     @staticmethod
     def outputCred(hby, rgy, said):
         out = bytearray()
-        creder, sadsigers, sadcigars = rgy.reger.cloneCred(said=said)
+        creder, prefixer, seqner, saider = rgy.reger.cloneCred(said=said)
         chains = creder.chains
         saids = []
         for key, source in chains.items():
@@ -567,8 +572,7 @@ class CredentialResourceEnd:
                 out.extend(serder.raw)
                 out.extend(atc)
 
-        out.extend(creder.raw)
-        out.extend(proofize(sadtsgs=sadsigers, sadcigars=sadcigars, pipelined=True))
+        out.extend(signing.serialize(creder, prefixer, seqner, saider))
 
         return out
     
@@ -664,8 +668,8 @@ class Registrar:
             hab (Hab): human readable name for the registry
             registry (SignifyRegistry): qb64 identifier prefix of issuing identifier in control of this registry
             prefixer (Prefixer):
-            seqner (Seqner):
-            saider (Saider):
+            seqner (Seqner): sequence number class of anchoring event
+            saider (Saider): SAID class of anchoring event
 
         Returns:
             Registry:  created registry
@@ -937,10 +941,8 @@ class Registrar:
 
             serder, sadsigs, sadcigs = self.rgy.reger.cloneCred(creder.said)
             atc = signing.provision(serder=creder, sadcigars=sadcigs, sadsigers=sadsigs)
-            del atc[:serder.size]
-            self.postman.send(src=sender, dest=recp, topic="credential", serder=creder, attachment=atc)
-
-            exn, atc = protocoling.credentialIssueExn(hab=self.agentHab, issuer=issr, schema=creder.schema, said=creder.said)
+            iss = next(self.verifier.reger.clonePreIter(pre=creder.said))
+            exn, atc = protocoling.credentialIssueExn(hab=self.agentHab, message="", acdc=atc, iss=iss)
             self.postman.send(src=sender, dest=recp, topic="credential", serder=exn, attachment=atc)
 
             # Escrow until postman has successfully sent the notification
@@ -1000,20 +1002,13 @@ class Credentialer:
         rseq = coring.Seqner(sn=0)
 
         craw = signing.provision(creder, sadsigers=sadsigers)
-        atc = bytearray(craw[creder.size:])
-
         if isinstance(hab, SignifyGroupHab):
             smids.remove(hab.mhab.pre)
-
-            print(f"Sending signed credential to {len(smids)} other participants")
-            for recpt in smids:
-                self.postman.send(src=hab.mhab.pre, dest=recpt, topic="multisig", serder=creder, attachment=atc)
 
             # escrow waiting for other signatures
             self.rgy.reger.cmse.put(keys=(creder.said, rseq.qb64), val=creder)
         else:
-            # escrow waiting for registry anchors to be complete
-            self.rgy.reger.crie.put(keys=(creder.said, rseq.qb64), val=creder)
+            self.rgy.reger.ccrd.put(keys=(creder.said,), val=creder)
 
         parsing.Parser().parse(ims=craw, vry=self.verifier)
 
@@ -1032,45 +1027,7 @@ class Credentialer:
             hab = self.hby.habs[creder.issuer]
             kever = hab.kever
             # place in escrow to diseminate to other if witnesser and if there is an issuee
-            self.rgy.reger.crie.put(keys=(creder.said, rseq.qb64), val=creder)
-
-    def processCredentialIssuedEscrow(self):
-        for (said, snq), creder in self.rgy.reger.crie.getItemIter():
-            rseq = coring.Seqner(qb64=snq)
-
-            if not self.registrar.complete(pre=said, sn=rseq.sn):
-                continue
-
-            saider = self.rgy.reger.saved.get(keys=said)
-            if saider is None:
-                continue
-
-            print("Credential issuance complete, sending to recipient")
-            self.registrar.sendToRecipients(creder)
-
-            self.rgy.reger.crie.rem(keys=(said, snq))
-
-    def processCredentialSentEscrow(self):
-        """
-        Process Poster cues to ensure that the last message (exn notification) has
-        been sent before declaring the credential complete
-
-        """
-        for (said,), creder in self.rgy.reger.crse.getItemIter():
-            found = False
-            while self.postman.cues:
-                cue = self.postman.cues.popleft()
-                if cue["said"] == said:
-                    found = True
-                    break
-
-            if found:
-                self.rgy.reger.crse.rem(keys=(said,))
-                self.rgy.reger.ccrd.put(keys=(creder.said,), val=creder)
-                self.notifier.add(dict(
-                    r=f"/credential/iss/complete",
-                    a=dict(d=said),
-                ))
+            self.rgy.reger.ccrd.put(keys=(creder.said,), val=creder)
 
     def complete(self, said):
         return self.rgy.reger.ccrd.get(keys=(said,)) is not None and len(self.postman.evts) == 0
@@ -1080,6 +1037,4 @@ class Credentialer:
         Process credential registry anchors:
 
         """
-        self.processCredentialIssuedEscrow()
         self.processCredentialMissingSigEscrow()
-        self.processCredentialSentEscrow()
