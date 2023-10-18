@@ -7,7 +7,7 @@ keria.app.agenting module
 import json
 import os
 from dataclasses import asdict
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 from keri import kering
 from keri.app.notifying import Notifier
@@ -16,7 +16,7 @@ from keri.app.storing import Mailboxer
 import falcon
 from falcon import media
 from hio.base import doing
-from hio.core import http
+from hio.core import http, tcp
 from hio.help import decking
 from keri.app import configing, keeping, habbing, storing, signaling, oobiing, agenting, delegating, \
     forwarding, querying, connecting, grouping
@@ -26,6 +26,8 @@ from keri.core import coring, parsing, eventing, routing
 from keri.core.coring import Ilks, randomNonce
 from keri.db import dbing
 from keri.db.basing import OobiRecord
+from keri.vc import protocoling
+
 from keria.end import ending
 from keri.help import helping, ogler
 from keri.peer import exchanging
@@ -46,7 +48,8 @@ from ..db import basing
 logger = ogler.getLogger()
 
 
-def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=None, configDir=None):
+def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=None, configDir=None,
+          keypath=None, certpath=None, cafilepath=None):
     """ Set up an ahab in Signify mode """
 
     agency = Agency(name=name, base=base, bran=bran, configFile=configFile, configDir=configDir)
@@ -54,7 +57,8 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
         allow_origins='*', allow_credentials='*',
         expose_headers=['cesr-attachment', 'cesr-date', 'content-type', 'signature', 'signature-input',
                         'signify-resource', 'signify-timestamp']))
-    bootServer = http.Server(port=bootPort, app=bootApp)
+
+    bootServer = createHttpServer(bootPort, bootApp, keypath, certpath, cafilepath)
     bootServerDoer = http.ServerDoer(server=bootServer)
     bootEnd = BootEnd(agency)
     bootApp.add_route("/boot", bootEnd)
@@ -72,7 +76,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
     app.req_options.media_handlers.update(media.Handlers())
     app.resp_options.media_handlers.update(media.Handlers())
 
-    adminServer = http.Server(port=adminPort, app=app)
+    adminServer = createHttpServer(adminPort, app, keypath, certpath, cafilepath)
     adminServerDoer = http.ServerDoer(server=adminServer)
 
     doers = [agency, bootServerDoer, adminServerDoer]
@@ -95,7 +99,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
         ending.loadEnds(agency=agency, app=happ)
         indirecting.loadEnds(agency=agency, app=happ)
 
-        server = http.Server(port=httpPort, app=happ)
+        server = createHttpServer(httpPort, happ, keypath, certpath, cafilepath)
         httpServerDoer = http.ServerDoer(server=server)
         doers.append(httpServerDoer)
 
@@ -108,6 +112,31 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
 
     print("The Agency is loaded and waiting for requests...")
     return doers
+
+
+def createHttpServer(port, app, keypath=None, certpath=None, cafilepath=None):
+    """
+    Create an HTTP or HTTPS server depending on whether TLS key material is present
+
+    Parameters:
+        port (int)         : port to listen on for all HTTP(s) server instances
+        app (falcon.App)   : application instance to pass to the http.Server instance
+        keypath (string)   : the file path to the TLS private key
+        certpath (string)  : the file path to the TLS signed certificate (public key)
+        cafilepath (string): the file path to the TLS CA certificate chain file
+    Returns:
+        hio.core.http.Server
+    """
+    if keypath is not None and certpath is not None and cafilepath is not None:
+        servant = tcp.ServerTls(certify=False,
+                                keypath=keypath,
+                                certpath=certpath,
+                                cafilepath=cafilepath,
+                                port=port)
+        server = http.Server(port=port, app=app, servant=servant)
+    else:
+        server = http.Server(port=port, app=app)
+    return server
 
 
 class Agency(doing.DoDoer):
@@ -290,12 +319,14 @@ class Agent(doing.DoDoer):
         self.monitor = longrunning.Monitor(hby=hby, swain=self.swain, counselor=self.counselor, temp=hby.temp,
                                            registrar=self.registrar, credentialer=self.credentialer)
         self.seeker = basing.Seeker(name=hby.name, db=hby.db, reger=self.rgy.reger, reopen=True, temp=self.hby.temp)
+        self.exnseeker = basing.ExnSeeker(name=hby.name, db=hby.db, reopen=True, temp=self.hby.temp)
 
         challengeHandler = challenging.ChallengeHandler(db=hby.db, signaler=signaler)
 
         handlers = [challengeHandler]
         self.exc = exchanging.Exchanger(hby=hby, handlers=handlers)
         grouping.loadHandlers(exc=self.exc, mux=self.mux)
+        protocoling.loadHandlers(hby=self.hby, exc=self.exc, rgy=self.rgy, notifier=self.notifier)
 
         self.rvy = routing.Revery(db=hby.db, cues=self.cues)
         self.kvy = eventing.Kevery(db=hby.db,
@@ -326,9 +357,9 @@ class Agent(doing.DoDoer):
             ParserDoer(kvy=self.kvy, parser=self.parser),
             Witnesser(receiptor=receiptor, witners=self.witners),
             Delegator(agentHab=agentHab, swain=self.swain, anchors=self.anchors),
-            GroupRequester(hby=hby, agentHab=agentHab, postman=self.postman, counselor=self.counselor,
-                           groups=self.groups),
-            SeekerDoer(seeker=self.seeker, cues=self.verifier.cues)
+            GroupRequester(hby=hby, agentHab=agentHab, counselor=self.counselor, groups=self.groups),
+            SeekerDoer(seeker=self.seeker, cues=self.verifier.cues),
+            ExnSeekerDoer(seeker=self.exnseeker, cues=self.exc.cues)
         ])
 
         super(Agent, self).__init__(doers=doers, always=True, **opts)
@@ -434,6 +465,23 @@ class SeekerDoer(doing.Doer):
                 self.seeker.index(said=creder.said)
 
 
+class ExnSeekerDoer(doing.Doer):
+
+    def __init__(self, seeker, cues):
+        self.seeker = seeker
+        self.cues = cues
+
+        super(ExnSeekerDoer, self).__init__()
+
+    def recur(self, tyme=None):
+        if self.cues:
+            cue = self.cues.popleft()
+            if cue["kin"] == "saved":
+                said = cue["said"]
+                print(f"indexing exn said={said}")
+                self.seeker.index(said=said)
+
+
 class Initer(doing.Doer):
     def __init__(self, agentHab, caid):
         self.agentHab = agentHab
@@ -451,10 +499,9 @@ class Initer(doing.Doer):
 
 class GroupRequester(doing.Doer):
 
-    def __init__(self, hby, agentHab, postman, counselor, groups):
+    def __init__(self, hby, agentHab, counselor, groups):
         self.hby = hby
         self.agentHab = agentHab
-        self.postman = postman
         self.counselor = counselor
         self.groups = groups
 
@@ -465,13 +512,8 @@ class GroupRequester(doing.Doer):
         if self.groups:
             msg = self.groups.popleft()
             serder = msg["serder"]
-            sigers = msg["sigers"]
 
             ghab = self.hby.habs[serder.pre]
-            atc = bytearray()  # attachment
-            atc.extend(coring.Counter(code=coring.CtrDex.ControllerIdxSigs, count=len(sigers)).qb64b)
-            for siger in sigers:
-                atc.extend(siger.qb64b)
 
             prefixer = coring.Prefixer(qb64=serder.pre)
             seqner = coring.Seqner(sn=serder.sn)
@@ -881,31 +923,34 @@ class OobiResourceEnd:
         if role in (kering.Roles.witness,):  # Fetch URL OOBIs for all witnesses
             oobis = []
             for wit in hab.kever.wits:
-                urls = hab.fetchUrls(eid=wit, scheme=kering.Schemes.http)
+                urls = hab.fetchUrls(eid=wit, scheme=kering.Schemes.http) or hab.fetchUrls(eid=wit, scheme=kering.Schemes.https)
                 if not urls:
                     raise falcon.HTTPNotFound(description=f"unable to query witness {wit}, no http endpoint")
 
-                up = urlparse(urls[kering.Schemes.http])
-                oobis.append(f"http://{up.hostname}:{up.port}/oobi/{hab.pre}/witness/{wit}")
+                url = urls[kering.Schemes.http] if kering.Schemes.http in urls else urls[kering.Schemes.https]
+                up = urlparse(url)
+                oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/witness/{wit}"))
             res["oobis"] = oobis
         elif role in (kering.Roles.controller,):  # Fetch any controller URL OOBIs
             oobis = []
-            urls = hab.fetchUrls(eid=hab.pre, scheme=kering.Schemes.http)
+            urls = hab.fetchUrls(eid=hab.pre, scheme=kering.Schemes.http) or hab.fetchUrls(eid=hab.pre, scheme=kering.Schemes.https)
             if not urls:
                 raise falcon.HTTPNotFound(description=f"unable to query controller {hab.pre}, no http endpoint")
 
-            up = urlparse(urls[kering.Schemes.http])
-            oobis.append(f"http://{up.hostname}:{up.port}/oobi/{hab.pre}/controller")
+            url = urls[kering.Schemes.http] if kering.Schemes.http in urls else urls[kering.Schemes.https]
+            up = urlparse(url)
+            oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/controller"))
             res["oobis"] = oobis
         elif role in (kering.Roles.agent,):
             oobis = []
-            roleUrls = hab.fetchRoleUrls(hab.pre, scheme=kering.Schemes.http, role=kering.Roles.agent)
+            roleUrls = hab.fetchRoleUrls(hab.pre, scheme=kering.Schemes.http, role=kering.Roles.agent) or hab.fetchRoleurls(hab.pre, scheme=kering.Schemes.https, role=kering.Roles.agent)
             if not roleUrls:
                 raise falcon.HTTPNotFound(description=f"unable to query controller {hab.pre}, no http endpoint")
 
             for eid, urls in roleUrls['agent'].items():
-                up = urlparse(urls[kering.Schemes.http])
-                oobis.append(f"http://{up.hostname}:{up.port}/oobi/{hab.pre}/agent/{eid}")
+                url = urls[kering.Schemes.http] if kering.Schemes.http in urls else urls[kering.Schemes.https]
+                up = urlparse(url)
+                oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/agent/{eid}"))
                 res["oobis"] = oobis
         else:
             rep.status = falcon.HTTP_404
