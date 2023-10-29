@@ -64,6 +64,9 @@ def loadEnds(app, agency, authn):
     groupEnd = GroupMemberCollectionEnd()
     app.add_route("/identifiers/{name}/members", groupEnd)
 
+    lookupEnd = LookupEnd()
+    app.add_route("/lookup", lookupEnd)
+
     return aidEnd
 
 
@@ -1478,3 +1481,60 @@ class GroupMemberCollectionEnd:
         data = dict(signing=signing, rotation=rotation)
         rep.status = falcon.HTTP_200
         rep.data = json.dumps(data).encode("utf-8")
+
+
+class LookupEnd:
+    @staticmethod
+    def on_get(req, rep):
+        agent = req.context.agent
+
+        ids = set()
+        if "id" in req.params:
+            t = req.params.get("id")
+            if isinstance(t, list):
+                ids = set(t)
+            else:
+                ids = set([t])
+
+        names = set()
+        if "name" in req.params:
+            t = req.params.get("name")
+            if isinstance(t, list):
+                names = set(t)
+            else:
+                names = set([t])
+
+        types = None
+        if "type" in req.params:
+            t = req.params.get("type")
+            if isinstance(t, list):
+                types = set(t)
+            else:
+                types = set([t])
+
+        res = []
+
+        if types is None or "identifier" in types:
+            for name, habord in agent.hby.db.habs.getItemIter():
+                name = ".".join(name)
+                if habord.hid in ids or name in names:
+                    res.append(dict(
+                        type = "identifier",
+                        id = habord.hid,
+                        name = name
+                    ))
+
+        if types is None or "contact" in types:
+            for (pre, field), val in agent.hby.db.cfld.getItemIter():
+                if field == "alias":
+                    if pre in ids or val in names:
+                        res.append(dict(
+                            type = "contact",
+                            id = pre,
+                            name = val
+                        ))
+
+        res = sorted(res, key = lambda i: i["id"])
+
+        rep.status = falcon.HTTP_200
+        rep.data = json.dumps(res).encode("utf-8")
