@@ -7,19 +7,51 @@ keria.core.httping module
 
 import falcon
 from falcon.http_status import HTTPStatus
+from typing import Callable
 
 class HandleCORS(object):
+    
+    def __init__(self, isallowed: Callable[[str], bool] = None):
+        self.isallowed = isallowed
+        pass
     def process_request(self, req, resp):
+        
+        # Origin
         origin = req.get_header('Origin')
-        if origin is None:
+        # This is not a CORS request, do nothing
+        if origin is None: 
             return
-        resp.set_header('Access-Control-Allow-Origin', '*')
-        resp.set_header('Access-Control-Allow-Methods', '*')
-        resp.set_header('Access-Control-Allow-Headers', '*')
+        # Use callback to check origin permission. If denied then do nothing 
+        if (self.isallowed is not None) and (self.isallowed(origin) is not True):
+            return
+        resp.set_header('Access-Control-Allow-Origin', origin)
+
+        # Request-Method
+        requestMethod = req.get_header('Access-Control-Request-Method')
+        if requestMethod is not None:
+            resp.set_header('Access-Control-Allow-Methods', requestMethod)
+
+        # Request-Headers
+        allowHeaders = req.get_header('Access-Control-Request-Headers')
+        if allowHeaders is not None:
+            resp.set_header('Access-Control-Allow-Headers', allowHeaders)
+
+        # Request-Private-Network (chrome)
+        privateNetwork = req.get_header('Access-Control-Request-Private-Network')
+        if privateNetwork == 'true':
+            resp.set_header('Access-Control-Allow-Private-Network', privateNetwork)
+
+        # Expose-Headers
         resp.set_header('Access-Control-Expose-Headers', '*')
-        resp.set_header('Access-Control-Allow-Private-Network', 'true')
-        resp.set_header('Access-Control-Max-Age', 5)  # 20 days
-        if req.method == 'OPTIONS' and req.get_header("Access-Control-Request-Method") is not None:
+
+        # Max-Age
+        resp.set_header('Access-Control-Max-Age', 5*60) # 5 minutes
+
+        # Allow-Credentials - make sure this is not set
+        resp.delete_header('Access-Control-Allow-Credentials')
+
+        # This is a CORS pre-flight request, return empty 204 response
+        if req.method == 'OPTIONS' and requestMethod is not None:
             raise HTTPStatus(falcon.HTTP_204, body='')
 
 
