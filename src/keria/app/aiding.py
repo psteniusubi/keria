@@ -6,7 +6,7 @@ keria.app.aiding module
 """
 import json
 from dataclasses import asdict
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import falcon
 from keri import kering
@@ -51,6 +51,8 @@ def loadEnds(app, agency, authn):
     app.add_route("/challenges", chaEnd)
     chaResEnd = ChallengeResourceEnd()
     app.add_route("/challenges/{name}", chaResEnd)
+    chaVerResEnd = ChallengeVerifyResourceEnd()
+    app.add_route("/challenges/{name}/verify/{source}", chaVerResEnd)
 
     contactColEnd = ContactCollectionEnd()
     app.add_route("/contacts", contactColEnd)
@@ -157,7 +159,7 @@ class AgentResourceEnd:
 
         if not self.authn.verify(req):
             raise falcon.HTTPForbidden(description="invalid signature on request")
-
+        
         sxlt = body["sxlt"]
         agent.mgr.sxlt = sxlt
 
@@ -309,6 +311,18 @@ class IdentifierCollectionEnd:
             serder = coring.Serder(ked=icp)
 
             sigers = [coring.Siger(qb64=sig) for sig in sigs]
+
+            if agent.hby.habByName(name) is not None:
+                raise falcon.HTTPBadRequest(title=f"AID with name {name} already incepted")
+
+            if 'b' in icp:
+                for wit in icp['b']:
+                    urls = agent.agentHab.fetchUrls(eid=wit, scheme=kering.Schemes.http)
+                    if not urls and wit not in agent.hby.kevers:
+                        raise falcon.HTTPBadRequest(description=f'unknown witness {wit}')
+
+            if 'di' in icp and icp["di"] not in agent.hby.kevers:
+                raise falcon.HTTPBadRequest(description=f'unknown delegator {icp["di"]}')
 
             # client is requesting agent to join multisig group
             if "group" in body:
@@ -469,11 +483,17 @@ class IdentifierResourceEnd:
         hab = agent.hby.habByName(name)
         if hab is None:
             raise falcon.HTTPNotFound(title=f"No AID with name {name} found")
-
+               
         rot = body.get("rot")
         if rot is None:
             raise falcon.HTTPBadRequest(title="invalid rotation",
                                         description=f"required field 'rot' missing from request")
+
+        if 'ba' in rot:
+            for wit in rot['ba']:
+                urls = agent.agentHab.fetchUrls(eid=wit, scheme=kering.Schemes.http)
+                if not urls and wit not in agent.hby.kevers:
+                    raise falcon.HTTPBadRequest(description=f'unknown witness {wit}')
 
         sigs = body.get("sigs")
         if sigs is None or len(sigs) == 0:
@@ -595,7 +615,7 @@ def info(hab, rm, full=False):
 
 class IdentifierOOBICollectionEnd:
     """
-      This class represents the OOBI subresource collection endpoint for Identfiiers
+      This class represents the OOBI subresource collection endpoint for identifiers
 
     """
 
@@ -623,38 +643,67 @@ class IdentifierOOBICollectionEnd:
         if role in (kering.Roles.witness,):  # Fetch URL OOBIs for all witnesses
             oobis = []
             for wit in hab.kever.wits:
-                urls = hab.fetchUrls(eid=wit, scheme=kering.Schemes.http)
+                urls = hab.fetchUrls(eid=wit, scheme=kering.Schemes.http) or hab.fetchUrls(eid=wit, scheme=kering.Schemes.https)
                 if not urls:
                     raise falcon.HTTPNotFound(description=f"unable to query witness {wit}, no http endpoint")
 
-                up = urlparse(urls[kering.Schemes.http])
-                oobis.append(f"{kering.Schemes.http}://{up.hostname}:{up.port}/oobi/{hab.pre}/witness/{wit}")
+                url = urls[kering.Schemes.http] if kering.Schemes.http in urls else urls[kering.Schemes.https]
+                up = urlparse(url)
+                oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/witness/{wit}"))
             res["oobis"] = oobis
         elif role in (kering.Roles.controller,):  # Fetch any controller URL OOBIs
             oobis = []
-            urls = hab.fetchUrls(eid=hab.pre, scheme=kering.Schemes.http)
+            urls = hab.fetchUrls(eid=hab.pre, scheme=kering.Schemes.http) or hab.fetchUrls(eid=hab.pre, scheme=kering.Schemes.https)
             if not urls:
                 raise falcon.HTTPNotFound(description=f"unable to query controller {hab.pre}, no http endpoint")
 
-            up = urlparse(urls[kering.Schemes.http])
-            oobis.append(f"{kering.Schemes.http}://{up.hostname}:{up.port}/oobi/{hab.pre}/controller")
+            url = urls[kering.Schemes.http] if kering.Schemes.http in urls else urls[kering.Schemes.https]
+            up = urlparse(url)
+            oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/controller"))
             res["oobis"] = oobis
         elif role in (kering.Roles.agent,):  # Fetch URL OOBIs for all witnesses
-            roleUrls = hab.fetchRoleUrls(cid=hab.pre, role=kering.Roles.agent, scheme=kering.Schemes.http)
+            roleUrls = hab.fetchRoleUrls(cid=hab.pre, role=kering.Roles.agent, scheme=kering.Schemes.http) or hab.fetchRoleUrls(cid=hab.pre, role=kering.Roles.agent, scheme=kering.Schemes.https)
             if kering.Roles.agent not in roleUrls:
-                raise falcon.HTTPNotFound(description=f"unable to query agent roles for {hab.pre}, no http endpoint")
+                res['oobis'] = []
+            else:
+                aoobis = roleUrls[kering.Roles.agent]
 
-            aoobis = roleUrls[kering.Roles.agent]
+                oobis = list()
+                for agent in set(aoobis.keys()):
+                    murls = aoobis.naball(agent)
+                    for murl in murls:
+                        urls = []
+                        if kering.Schemes.http in murl:
+                            urls.extend(murl.naball(kering.Schemes.http))
+                        if kering.Schemes.https in murl:
+                            urls.extend(murl.naball(kering.Schemes.https))
+                        for url in urls:
+                            up = urlparse(url)
+                            oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/agent/{agent}"))
 
-            oobis = list()
-            for agent in set(aoobis.keys()):
-                murls = aoobis.naball(agent)
-                for murl in murls:
-                    for url in murl.naball(kering.Schemes.http):
-                        up = urlparse(url)
-                        oobis.append(f"{kering.Schemes.http}://{up.hostname}:{up.port}/oobi/{hab.pre}/agent/{agent}")
+                res["oobis"] = oobis
+        elif role in (kering.Roles.mailbox,):  # Fetch URL OOBIs for all witnesses
+            roleUrls = (hab.fetchRoleUrls(cid=hab.pre, role=kering.Roles.mailbox, scheme=kering.Schemes.http) or
+                        hab.fetchRoleUrls(cid=hab.pre, role=kering.Roles.mailbox, scheme=kering.Schemes.https))
+            if kering.Roles.mailbox not in roleUrls:
+                res['oobis'] = []
+            else:
+                aoobis = roleUrls[kering.Roles.mailbox]
 
-            res["oobis"] = oobis
+                oobis = list()
+                for mailbox in set(aoobis.keys()):
+                    murls = aoobis.naball(mailbox)
+                    for murl in murls:
+                        urls = []
+                        if kering.Schemes.http in murl:
+                            urls.extend(murl.naball(kering.Schemes.http))
+                        if kering.Schemes.https in murl:
+                            urls.extend(murl.naball(kering.Schemes.https))
+                        for url in urls:
+                            up = urlparse(url)
+                            oobis.append(urljoin(up.geturl(), f"/oobi/{hab.pre}/mailbox/{mailbox}"))
+
+                res["oobis"] = oobis
         else:
             raise falcon.HTTPBadRequest(description=f"unsupport role type {role} for oobi request")
 
@@ -667,6 +716,16 @@ class EndRoleCollectionEnd:
 
     @staticmethod
     def on_get(req, rep, name=None, aid=None, role=None):
+        """  GET endpoint for end role collection
+
+        Parameters:
+            req (Request): falcon HTTP request object
+            rep (Response): falcon HTTP response object
+            name (str): human readable alias for AID
+            aid (str): aid to use instead of name
+            role (str): optional role to search for
+
+        """
         agent = req.context.agent
 
         if name is not None:
@@ -694,7 +753,7 @@ class EndRoleCollectionEnd:
 
     @staticmethod
     def on_post(req, rep, name, aid=None, role=None):
-        """
+        """ POST endpoint for end role collection
 
         Args:
             req (Request): Falcon HTTP request object
@@ -733,21 +792,6 @@ class EndRoleCollectionEnd:
             agent.hby.rvy.processReply(rserder, tsgs=[tsg])
         except kering.UnverifiedReplyError:
             pass
-
-        if isinstance(hab, habbing.SignifyGroupHab):
-            seal = eventing.SealEvent(i=hab.kever.prefixer.qb64,
-                                      s=hex(hab.kever.lastEst.s),
-                                      d=hab.kever.lastEst.d)
-            msg = eventing.messagize(serder=rserder,
-                                     sigers=rsigers,
-                                     seal=seal,
-                                     pipelined=True)
-            atc = bytes(msg[rserder.size:])
-
-            others = [smid for smid in hab.db.signingMembers(hab.pre) if smid != hab.mhab.pre]
-            for o in others:
-                agent.postman.send(hab=agent.agentHab, dest=o, topic="multisig", serder=rserder,
-                                   attachment=atc)
 
         oid = ".".join([pre, role, eid])
         op = agent.monitor.submit(oid, longrunning.OpTypes.endrole, metadata=dict(cid=pre, role=role, eid=eid))
@@ -794,7 +838,7 @@ class ChallengeCollectionEnd:
             rep: falcon.Response HTTP response
 
         ---
-        summary:  Get list of agent identifiers
+        summary:  Get random list of words for a 2 factor auth challenge
         description:  Get the list of identifiers associated with this agent
         tags:
            - Challenge/Response
@@ -807,16 +851,16 @@ class ChallengeCollectionEnd:
              required: false
         responses:
             200:
-              description: An array of Identifier key state information
+              description: An array of random words
               content:
                   application/json:
                     schema:
-                        description: Randon word list
+                        description: Random word list
                         type: object
                         properties:
                             words:
                                 type: array
-                                description: random challange word list
+                                description: random challenge word list
                                 items:
                                     type: string
 
@@ -842,10 +886,10 @@ class ChallengeResourceEnd:
         Parameters:
             req: falcon.Request HTTP request
             rep: falcon.Response HTTP response
-            name: human readable name of identifier to use to sign the challange/response
+            name: human readable name of identifier to use to sign the challenge/response
 
         ---
-        summary:  Sign challange message and forward to peer identfiier
+        summary:  Sign challenge message and forward to peer identifier
         description:  Sign a challenge word list received out of bands and send `exn` peer to peer message
                       to recipient
         tags:
@@ -894,14 +938,79 @@ class ChallengeResourceEnd:
 
         rep.status = falcon.HTTP_202
 
+
+class ChallengeVerifyResourceEnd:
+    """ Resource for Challenge/Response Verification Endpoints """
+
     @staticmethod
-    def on_put(req, rep, name):
+    def on_post(req, rep, name, source):
+        """ Challenge POST endpoint
+
+        Parameters:
+            req: falcon.Request HTTP request
+            rep: falcon.Response HTTP response
+            name: human readable name of identifier to use to sign the challenge/response
+            source: qb64 AID of of source of signed response to verify
+
+        ---
+        summary:  Sign challenge message and forward to peer identifier
+        description:  Sign a challenge word list received out of bands and send `exn` peer to peer message
+                      to recipient
+        tags:
+           - Challenge/Response
+        parameters:
+          - in: path
+            name: name
+            schema:
+              type: string
+            required: true
+            description: Human readable alias for the identifier to create
+        requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                    description: Challenge response
+                    properties:
+                        recipient:
+                          type: string
+                          description: human readable alias recipient identifier to send signed challenge to
+                        words:
+                          type: array
+                          description:  challenge in form of word list
+                          items:
+                              type: string
+        responses:
+           202:
+              description: Success submission of signed challenge/response
+        """
+        agent = req.context.agent
+        hab = agent.hby.habByName(name)
+        if hab is None:
+            raise falcon.HTTPNotFound(description="no matching Hab for alias {name}")
+
+        body = req.get_media()
+        words = httping.getRequiredParam(body, "words")
+        if source not in agent.hby.kevers:
+            raise falcon.HTTPNotFound(description=f"challenge response source={source} not found")
+
+        meta = dict(words=words)
+        op = agent.monitor.submit(source, longrunning.OpTypes.challenge, metadata=meta)
+        rep.status = falcon.HTTP_202
+        rep.content_type = "application/json"
+        rep.data = op.to_json().encode("utf-8")
+
+        rep.status = falcon.HTTP_202
+
+    @staticmethod
+    def on_put(req, rep, name, source):
         """ Challenge PUT accept endpoint
 
         Parameters:
             req: falcon.Request HTTP request
             rep: falcon.Response HTTP response
-            name: human readable name of identifier to use to sign the challange/response
+            name: human readable name of identifier to use to sign the challenge/response
+            source: qb64 AID of of source of signed response to verify
 
         ---
         summary:  Mark challenge response exn message as signed
@@ -937,16 +1046,18 @@ class ChallengeResourceEnd:
         agent = req.context.agent
         hab = agent.hby.habByName(name)
         if hab is None:
-            raise falcon.HTTPBadRequest(description="no matching Hab for alias {name}")
+            raise falcon.HTTPNotFound(description="no matching Hab for alias {name}")
 
         body = req.get_media()
-        if "aid" not in body or "said" not in body:
+        if "said" not in body:
             raise falcon.HTTPBadRequest(description="challenge response acceptance requires 'aid' and 'said'")
 
-        aid = body["aid"]
+        if source not in agent.hby.kevers:
+            raise falcon.HTTPNotFound(description=f"challenge response source={source} not found")
+
         said = body["said"]
         saider = coring.Saider(qb64=said)
-        agent.hby.db.chas.add(keys=(aid,), val=saider)
+        agent.hby.db.chas.add(keys=(source,), val=saider)
 
         rep.status = falcon.HTTP_202
 
@@ -1063,8 +1174,8 @@ class ContactImageResourceEnd:
             prefix: qb64 identifier prefix of contact to associate with image
 
         ---
-         summary: Uploads an image to associate with identfier.
-         description: Uploads an image to associate with identfier.
+         summary: Uploads an image to associate with identifier.
+         description: Uploads an image to associate with identifier.
          tags:
             - Contacts
          parameters:
@@ -1157,8 +1268,8 @@ class ContactResourceEnd:
             prefix: qb64 identifier prefix of contact information to get
 
        ---
-        summary:  Get contact information associated with single remote identfier
-        description:  Get contact information associated with single remote identfier.  All
+        summary:  Get contact information associated with single remote identifier
+        description:  Get contact information associated with single remote identifier.  All
                       information is meta-data and kept in local storage only
         tags:
            - Contacts
@@ -1220,7 +1331,7 @@ class ContactResourceEnd:
            200:
               description: Updated contact information for remote identifier
            400:
-              description: Invalid identfier used to update contact information
+              description: Invalid identifier used to update contact information
            404:
               description: Prefix not found in identifier contact information
         """
@@ -1256,8 +1367,8 @@ class ContactResourceEnd:
             prefix: qb64 identifier to update contact information
 
         ---
-        summary:  Update provided fields in contact information associated with remote identfier prefix
-        description:  Update provided fields in contact information associated with remote identfier prefix.  All
+        summary:  Update provided fields in contact information associated with remote identifier prefix
+        description:  Update provided fields in contact information associated with remote identifier prefix.  All
                       information is metadata and kept in local storage only
         tags:
            - Contacts
@@ -1280,7 +1391,7 @@ class ContactResourceEnd:
            200:
               description: Updated contact information for remote identifier
            400:
-              description: Invalid identfier used to update contact information
+              description: Invalid identifier used to update contact information
            404:
               description: Prefix not found in identifier contact information
         """
@@ -1313,8 +1424,8 @@ class ContactResourceEnd:
             prefix: qb64 identifier prefix to delete contact information
 
         ---
-        summary:  Delete contact information associated with remote identfier
-        description:  Delete contact information associated with remote identfier
+        summary:  Delete contact information associated with remote identifier
+        description:  Delete contact information associated with remote identifier
         tags:
            - Contacts
         parameters:

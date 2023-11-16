@@ -7,6 +7,7 @@ keria.app.notifying module
 import json
 
 import falcon
+from keri.peer import exchanging
 
 from keria.core import httping
 
@@ -28,8 +29,8 @@ class NotificationCollectionEnd:
             req: falcon.Request HTTP request
             rep: falcon.Response HTTP response
         ---
-        summary:  Get list of notifcations for the controller of the agent
-        description:  Get list of notifcations for the controller of the agent.  Notifications will
+        summary:  Get list of notifications for the controller of the agent
+        description:  Get list of notifications for the controller of the agent.  Notifications will
                        be sorted by creation date/time
         parameters:
           - in: header
@@ -47,6 +48,7 @@ class NotificationCollectionEnd:
               description: List of contact information for remote identifiers
         """
         agent = req.context.agent
+
         rng = req.get_header("Range")
         if rng is None:
             rep.status = falcon.HTTP_200
@@ -58,7 +60,10 @@ class NotificationCollectionEnd:
 
         count = agent.notifier.getNoteCnt()
         notes = agent.notifier.getNotes(start=start, end=end)
-        out = [note.pad for note in notes]
+        out = []
+        for note in notes:
+            attrs = note.pad
+            out.append(attrs)
 
         end = start + (len(out) - 1) if len(out) > 0 else 0
         rep.set_header("Accept-Ranges", "notes")
