@@ -54,7 +54,8 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
 
     agency = Agency(name=name, base=base, bran=bran, configFile=configFile, configDir=configDir)
     bootApp = falcon.App()
-    bootApp.add_middleware(middleware=httping.HandleCORS())
+    bootApp.add_middleware(middleware=httping.HandleCORS(isallowed=lambda origin: True))
+
     bootServer = createHttpServer(bootPort, bootApp, keypath, certpath, cafilepath)
     bootServerDoer = http.ServerDoer(server=bootServer)
     bootEnd = BootEnd(agency)
@@ -64,7 +65,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
     authn = Authenticater(agency=agency)
 
     app = falcon.App()
-    app.add_middleware(middleware=httping.HandleCORS())
+    app.add_middleware(middleware=httping.HandleCORS(isallowed=lambda origin: True))
     app.add_middleware(authing.SignatureValidationComponent(agency=agency, authn=authn, allowed=["/agent"]))
     app.req_options.media_handlers.update(media.Handlers())
     app.resp_options.media_handlers.update(media.Handlers())
@@ -84,7 +85,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
 
     if httpPort:
         happ = falcon.App()
-        happ.add_middleware(middleware=httping.HandleCORS())
+        happ.add_middleware(middleware=httping.HandleCORS(isallowed=lambda origin: True))
         happ.req_options.media_handlers.update(media.Handlers())
         happ.resp_options.media_handlers.update(media.Handlers())
 
