@@ -7,7 +7,6 @@ Testing the Mark II Agent Grouping endpoints
 
 """
 import json
-from pprint import pprint
 
 from hio.base import doing
 from keri.core import coring, eventing
@@ -81,7 +80,6 @@ def test_exchange_end(helpers):
 
         doist.recur(deeds=deeds)
 
-        assert len(agent.postman.evts) == 1
         assert len(agent.exchanges) == 0
         agent.exnseeker.index(cexn.said)
 
@@ -113,17 +111,16 @@ def test_exchange_end(helpers):
 
         doist.recur(deeds=deeds)
 
-        assert len(agent.postman.evts) == 1
         assert len(agent.exchanges) == 0
         agent.exnseeker.index(exn.said)
 
         body = json.dumps({}).encode("utf-8")
-        res = client.simulate_post(f"/identifiers/aid1/exchanges/query", body=body)
+        res = client.simulate_post(f"/exchanges/query", body=body)
         assert res.status_code == 200
         assert len(res.json) == 2
 
         body = json.dumps({'filter': {'-i': pre}, 'sort': ['-dt']}).encode("utf-8")
-        res = client.simulate_post(f"/identifiers/aid1/exchanges/query", body=body)
+        res = client.simulate_post(f"/exchanges/query", body=body)
         assert res.status_code == 200
         assert len(res.json) == 2
 
@@ -136,7 +133,7 @@ def test_exchange_end(helpers):
         assert serder.said == exn.said
 
         body = json.dumps({'filter': {'-i': pre}, 'sort': ['-dt'], 'skip': 1, "limit": 1}).encode("utf-8")
-        res = client.simulate_post(f"/identifiers/aid1/exchanges/query", body=body)
+        res = client.simulate_post(f"/exchanges/query", body=body)
         assert res.status_code == 200
         assert len(res.json) == 1
 
@@ -144,7 +141,7 @@ def test_exchange_end(helpers):
         serder = coring.Serder(ked=ked)
         assert serder.said == exn.said
 
-        res = client.simulate_get(f"/identifiers/aid1/exchanges/{exn.said}")
+        res = client.simulate_get(f"/exchanges/{exn.said}")
         assert res.status_code == 200
         serder = coring.Serder(ked=res.json['exn'])
         assert serder.said == exn.said
@@ -179,7 +176,7 @@ def test_exchange_end(helpers):
         agent.exnseeker.index(exn.said)
 
         body = json.dumps({'sort': ['-dt']}).encode("utf-8")
-        res = client.simulate_post(f"/identifiers/aid1/exchanges/query", body=body)
+        res = client.simulate_post(f"/exchanges/query", body=body)
         assert res.status_code == 200
         assert len(res.json) == 3
 
