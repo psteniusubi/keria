@@ -10,6 +10,14 @@ from falcon.http_status import HTTPStatus
 from typing import Callable
 
 class HandleCORS(object):
+    """
+    Falcon middleware to implement Cross-Origin Resource Sharing (CORS)
+
+    See also:
+        https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+    See also:
+        https://developer.chrome.com/blog/private-network-access-preflight/
+    """
     
     def __init__(self, isallowed: Callable[[str], bool] = None):
         self.isallowed = isallowed
@@ -37,6 +45,7 @@ class HandleCORS(object):
             resp.set_header('Access-Control-Allow-Headers', allowHeaders)
 
         # Request-Private-Network (chrome)
+        # https://developer.chrome.com/blog/private-network-access-preflight/
         privateNetwork = req.get_header('Access-Control-Request-Private-Network')
         if privateNetwork == 'true':
             resp.set_header('Access-Control-Allow-Private-Network', privateNetwork)
