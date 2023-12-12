@@ -18,7 +18,7 @@ from hio.help import decking
 from keri import kering
 from keri.app import habbing, configing, oobiing, querying
 from keri.app.agenting import Receiptor
-from keri.core import coring
+from keri.core import coring, serdering
 from keri.core.coring import MtrDex
 from keri.db import basing
 from keri.vc import proving
@@ -28,11 +28,12 @@ from keria.app import agenting, aiding
 from keria.core import longrunning
 
 
-def test_setup():
+def test_setup_no_http():
     doers = agenting.setup(name="test", bran=None, adminPort=1234, bootPort=5678)
     assert len(doers) == 3
     assert isinstance(doers[0], agenting.Agency) is True
 
+def test_setup():
     doers = agenting.setup("test", bran=None, adminPort=1234, bootPort=5678, httpPort=9999)
     assert len(doers) == 4
 
@@ -231,6 +232,7 @@ def test_keystate_ends(helpers):
                                'd': 'EIaGMMWJFPmtXznY1IIiKDIrg-vIyge6mBl2QV8dDjI3',
                                's': '0'}
 
+
 def test_oobi_ends(seeder, helpers):
     with helpers.openKeria() as (agency, agent, app, client), \
             habbing.openHby(name="wes", salt=coring.Salter(raw=b'wess-the-witness').qb64) as wesHby:
@@ -421,7 +423,7 @@ def test_seeker_doer(helpers):
         cues = decking.Deck()
         seeker = agenting.SeekerDoer(agent.seeker, cues)
 
-        creder = proving.Creder(ked={
+        creder = serdering.SerderACDC(sad={
             "v": "ACDC10JSON000197_",
             "d": "EG7ZlUq0Z6a1EUPTM_Qg1LGEg1BWiypHLAekxo8crGzK",
             "i": "EPbOCiPM7IItIMzMwslKWfPM4tqNIKUCyVVuYJNQHwMB",
