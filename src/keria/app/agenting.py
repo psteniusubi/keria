@@ -41,6 +41,7 @@ from . import grouping as keriagrouping
 from ..peer import exchanging as keriaexchanging
 from .specing import AgentSpecResource
 from ..core import authing, longrunning, httping
+from ..core.httping import HandleCORS, cors_config
 from ..core.authing import Authenticater
 from ..core.keeping import RemoteManager
 from ..db import basing
@@ -54,7 +55,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
 
     agency = Agency(name=name, base=base, bran=bran, configFile=configFile, configDir=configDir)
     bootApp = falcon.App()
-    bootApp.add_middleware(middleware=httping.HandleCORS(isallowed=lambda origin: True))
+    bootApp.add_middleware(middleware=HandleCORS(isallowed=cors_config(os.getenv("KERI_BOOT_CORS", "true"))))
 
 
     bootServer = createHttpServer(bootPort, bootApp, keypath, certpath, cafilepath)
@@ -68,7 +69,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
     authn = Authenticater(agency=agency)
 
     app = falcon.App()
-    app.add_middleware(middleware=httping.HandleCORS(isallowed=lambda origin: True))
+    app.add_middleware(middleware=HandleCORS(isallowed=cors_config(os.getenv("KERI_AGENT_CORS", "true"))))
     app.add_middleware(authing.SignatureValidationComponent(agency=agency, authn=authn, allowed=["/agent"]))
     app.req_options.media_handlers.update(media.Handlers())
     app.resp_options.media_handlers.update(media.Handlers())
@@ -89,7 +90,7 @@ def setup(name, bran, adminPort, bootPort, base='', httpPort=None, configFile=No
 
     if httpPort:
         happ = falcon.App()
-        happ.add_middleware(middleware=httping.HandleCORS(isallowed=lambda origin: True))
+        happ.add_middleware(middleware=HandleCORS(isallowed=cors_config(os.getenv("KERI_LOCAL_CORS", "true"))))
         happ.req_options.media_handlers.update(media.Handlers())
         happ.resp_options.media_handlers.update(media.Handlers())
 
