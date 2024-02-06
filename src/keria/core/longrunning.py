@@ -135,23 +135,23 @@ class Monitor:
         # Return Operation with full status check in case its already finished.
         return self.get(name)
 
-    def get(self, name):
+    def get(self, name, recurse=False) -> Operation:
         if (op := self.opr.ops.get(keys=(name,))) is None:
             return None
 
-        operation = self.status(op)
+        operation = self.status(op, recurse)
 
         return operation
 
-    def getOperations(self, type=None):
+    def getOperations(self, type=None, recurse=False):
         """ Return list of long running opterations, optionally filtered by type """
         ops = self.opr.ops.getItemIter()
         if type != None:
             ops = filter(lambda i: i[1].type == type, ops)
 
-        def get_status(op):
+        def get_status(op) -> Operation:
             try:
-                return self.status(op)
+                return self.status(op, recurse=recurse)
             except Exception as err:
                 # self.status may throw an exception.
                 # Handling error by returning an operation with error status
@@ -163,11 +163,18 @@ class Monitor:
 
         return [get_status(op) for (_, op) in ops]
 
-    def rem(self, name):
+    def rem(self, name, recurse=False) -> bool:
         """ Remove tracking of the long running operation represented by name """
+
+        if recurse and (op := self.opr.ops.get(keys=(name,))) is not None:
+            if "depends" in op.metadata:
+                deleted = self.rem(op.metadata["depends"]["name"], recurse=True)
+                if not deleted:
+                    return deleted
+
         return self.opr.ops.rem(keys=(name,))
 
-    def status(self, op):
+    def status(self, op, recurse=False) -> Operation:
         """  Calculate the status of an operation.
 
         Base on the type of an operation, determine the current status of the operation, including loading
@@ -186,6 +193,14 @@ class Monitor:
             name=f"{op.type}.{op.oid}",
             metadata=op.metadata,
         )
+
+        if recurse and "depends" in operation.metadata:
+            name = operation.metadata["depends"]["name"]
+            depends = self.get(name, recurse=True)
+            operation.metadata["depends"] = depends
+            if depends is not None and not depends.done:
+                operation.done = False
+                return operation
 
         if op.type in (OpTypes.witness,):
             if op.oid not in self.hby.kevers:
@@ -431,7 +446,8 @@ class OperationCollectionEnd:
         """
         agent = req.context.agent
         type = req.params.get("type")
-        ops = agent.monitor.getOperations(type=type)
+        recurse = "true" == req.params.get("recurse")
+        ops = agent.monitor.getOperations(type=type, recurse=recurse)
         rep.data = json.dumps(ops, default=lambda o: o.to_dict()).encode("utf-8")
         rep.content_type = "application/json"
         rep.status = falcon.HTTP_200
@@ -453,7 +469,8 @@ class OperationResourceEnd:
 
         """
         agent = req.context.agent
-        if (operation := agent.monitor.get(name)) is None:
+        recurse = "true" == req.params.get("recurse")
+        if (operation := agent.monitor.get(name, recurse=recurse)) is None:
             raise falcon.HTTPNotFound(title=f"long running operation '{name}' not found")
 
         rep.content_type = "application/json"
@@ -475,7 +492,8 @@ class OperationResourceEnd:
         if agent.monitor.get(name) is None:
             raise falcon.HTTPNotFound(title=f"long running operation '{name}' not found")
 
-        deleted = agent.monitor.rem(name)
+        recurse = "true" == req.params.get("recurse")
+        deleted = agent.monitor.rem(name, recurse=recurse)
         if deleted:
             rep.status = falcon.HTTP_204
         else:
